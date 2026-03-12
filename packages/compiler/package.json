@@ -1,5 +1,5 @@
 {
-  "name": "kmlc",
+  "name": "@kml/compiler",
   "version": "1.0.0",
   "description": "A complete KerML specification compiler",
   "main": "dist/index.js",
