@@ -1,9 +1,10 @@
 import React from 'react';
 import { useElementInteractions } from '../hooks/useElementInteraction';
+import { Node, Port } from '../types/model';
 
 interface BlockProps {
-    ports: any;
-    node: any;
+    ports: Port[];
+    node: Node;
     isSelected: boolean;
 }
 
@@ -12,9 +13,8 @@ const Block: React.FC<BlockProps> = ({ ports, node, isSelected }) => {
         useElementInteractions(node);
 
     return (
-        <g ref={el => dragRef(dropRef(el))}>
-            {ports.map((port: any) => <rect style={{ strokeWidth: 1 }} height="8" width="8" y={port.y} x={port.x} fill="currentColor" />)}
-            <rect style={{ strokeWidth: 1 }} height="8" width="8" y={port.y} x={port.x} fill="currentColor" />
+        <g ref={el => { dragRef(el); dropRef(el); }}>
+            {ports.map((port) => <rect style={{ strokeWidth: 1 }} height="8" width="8" y={port.y} x={port.x} fill="currentColor" />)}
 
             {isSelected && (
                 <g>

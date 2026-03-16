@@ -12,7 +12,7 @@ export interface Node {
   y: number
   width: number
   height: number
-  ports: Port[]
+  ports?: Port[]
 }
 
 export interface Edge {

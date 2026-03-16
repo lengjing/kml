@@ -1,37 +1,12 @@
-import { useElementDnD } from './useElementDnD';
-import { resizeStrategy } from '../strategies/ResizeStrategy';
-import { useSelectionStore } from '../store/useSelectionStore';
+import { useState } from "react";
+import { Node } from "../types/model";
+import useElementDnD from "./useElementDnd";
+import useElementResize from "./useElementResize";
 
-export function useElementInteractions(node) {
+export function useElementInteractions(node: Node) {
   const dnd = useElementDnD(node);
-  const selectedId = useSelectionStore(s => s.selectedId);
-  const isSelected = selectedId === node.id;
-
-  const handleResizeMouseDown = (direction) => (e) => {
-    if (!resizeStrategy.canResize(node)) return;
-
-    e.stopPropagation();
-
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startW = node.width;
-    const startH = node.height;
-
-    const move = (ev) => {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-
-      resizeStrategy.onResize(node, { direction, dx, dy, startW, startH });
-    };
-
-    const up = () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-    };
-
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-  };
+  const { handleResizeMouseDown } = useElementResize(node);
+  const [isSelected, setIsSelected] = useState(false);
 
   return {
     dragRef: dnd.dragRef,
