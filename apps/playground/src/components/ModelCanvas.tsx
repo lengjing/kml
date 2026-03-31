@@ -6,9 +6,7 @@ interface ModelCanvasProps {
 
 const ModelCanvas: React.FC<PropsWithChildren<ModelCanvasProps>> = ({ children }) => {
     return (
-        <div>Model Canvas
-            {children}
-        </div>
+        <svg width="100%" height="100%">{children}</svg>
     )
 };
 

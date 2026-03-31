@@ -22,4 +22,15 @@ export class PortStrategy implements IDragDropStrategy {
       undo() {},
     };
   }
+
+  executeDrag(element, ctx) {
+    return {
+      execute() {
+        console.log('Dragging port');
+
+        layout(element);
+      },
+      undo() {},
+    };
+  }
 }

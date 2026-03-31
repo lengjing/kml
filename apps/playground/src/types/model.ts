@@ -20,8 +20,3 @@ export interface Edge {
   sourcePort: string
   targetPort: string
 }
-
-export interface Graph {
-  nodes: Node[]
-  edges: Edge[]
-}
