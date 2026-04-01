@@ -1,12 +1,19 @@
 import React, { PropsWithChildren } from 'react';
 
 interface ModelCanvasProps {
-
+    width?: number;
+    height?: number;
 }
 
-const ModelCanvas: React.FC<PropsWithChildren<ModelCanvasProps>> = ({ children }) => {
+const ModelCanvas: React.FC<PropsWithChildren<ModelCanvasProps>> = ({ width = 800, height = 600, children }) => {
+    React.Children.forEach(children, (child) => {
+        if (React.isValidElement(child)) {
+            console.log(child.props);
+        }
+    });
+
     return (
-        <svg width="100%" height="100%">{children}</svg>
+        <svg width={width} height={height}>{children}</svg>
     )
 };
 
