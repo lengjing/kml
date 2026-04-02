@@ -1,46 +1,121 @@
-/**
- * Diagram Store - Combines Model and View stores with layout engine
- * Provides unified API for diagram operations
- */
-
 import ELK, { ElkNode } from "elkjs";
-import { create } from "zustand";
-import { Node, Edge } from "../types/model";
-import useModelStore from "./ModelStore";
-import useViewStore from "./ViewStore";
+import { Edge, Node } from "../types/model";
+import useModelStore, { type ModelStore } from "./ModelStore";
+import useViewStore, { type ViewStore } from "./ViewStore";
+import { useEffect } from "react";
 
 const elk = new ELK();
 
-export interface DiagramState {
-  isReady: boolean;
+// History entry with timestamp for proper ordering
+export interface HistoryEntry {
+  timestamp: number;
+  type: 'model' | 'view';
+}
+
+interface RedoEntry {
+  timestamp: number;
+  type: 'model' | 'view';
 }
 
 export interface DiagramActions {
   // Layout operations
   rebuild: () => Promise<void>;
-  
-  // Convenience methods that delegate to model/view stores
+
+  // Unified undo/redo based on operation sequence
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
 }
 
-export type DiagramStore = DiagramState & DiagramActions;
+// Custom hook that combines model and view stores
+export function useDiagramStore() {
+  const model = useModelStore();
+  const view = useViewStore();
 
-// Helper: Build diagram structure from model
-function buildDiagram(): { nodes: Node[]; edges: Edge[] } {
-  const model = useModelStore.getState();
+  useEffect(() => {
+    // Auto-rebuild when model changes
+    return useModelStore.subscribe((state, prevState) => {
+      if (state.elements.size !== prevState.elements.size) {
+        rebuild()
+      }
+    });
+  }, [])
+
+  const rebuild = async () => {
+    try {
+      // 1. Build diagram from model
+      const diagram = buildDiagram(model, view);
+
+      // 2. Convert to ELK format
+      const elkGraph = toElkGraph(diagram);
+
+      // 3. Run layout algorithm
+      const layout = await elk.layout(elkGraph);
+
+      // 4. Apply layout to view
+      applyLayout(layout, view);
+    } catch (error) {
+      console.error('Failed to rebuild diagram:', error);
+    }
+  }
+
+  const undo = () => {
+    // TODO: Implement unified undo with history tracking
+    if (view.canUndo()) {
+      view.undo();
+    } else if (model.canUndo()) {
+      model.undo();
+    }
+  }
+
+  const redo = () => {
+    // TODO: Implement unified redo with history tracking
+    if (view.canRedo()) {
+      view.redo();
+    } else if (model.canRedo()) {
+      model.redo();
+    }
+  }
+
+  return {
+    isReady: true,
+    model,
+    view,
+    history: [] as HistoryEntry[],
+    redoStack: [] as RedoEntry[],
+    rebuild,
+    undo,
+    redo,
+    canUndo: () => {
+      return model.canUndo() || view.canUndo();
+    },
+
+    canRedo: () => {
+      return model.canRedo() || view.canRedo();
+    }
+  };
+}
+
+// Helper: Build diagram structure from model with preserved layout
+function buildDiagram(model: ModelStore, view: ViewStore): { nodes: Node[]; edges: Edge[] } {
   const elements = model.queryByType("Block");
 
-  const nodes: Node[] = elements.map(el => ({
-    id: el.id,
-    x: 0,
-    y: 0,
-    width: 100,
-    height: 60,
-    ports: []
-  }));
+  // Get existing node sizes from current view to preserve user adjustments
+  const existingNodes = new Map(view.graph.nodes.map((n: Node) => [n.id, n]));
+
+  const nodes: Node[] = elements.map((el: any) => {
+    const existingNode = existingNodes.get(el.id);
+
+    return {
+      id: el.id,
+      x: existingNode?.x || 0,
+      y: existingNode?.y || 0,
+      width: existingNode?.width || 100,  // Preserve user-adjusted width
+      height: existingNode?.height || 60, // Preserve user-adjusted height
+      ports: []
+    };
+  });
 
   // Add ports for each block
   nodes.forEach(node => {
@@ -62,7 +137,7 @@ function buildDiagram(): { nodes: Node[]; edges: Edge[] } {
 
   // Build edges from connectors
   const connectors = model.queryByType("Connector");
-  const edges: Edge[] = connectors.map(conn => ({
+  const edges: Edge[] = connectors.map((conn: any) => ({
     id: conn.id,
     sourcePort: (conn as any).source,
     targetPort: (conn as any).target
@@ -98,108 +173,47 @@ function toElkGraph(diagram: { nodes: Node[]; edges: Edge[] }): ElkNode {
   };
 }
 
-// Helper: Apply layout result to view
-function applyLayout(layout: ElkNode) {
+// Helper: Apply layout result to view while preserving user adjustments
+function applyLayout(layout: ElkNode, view: ViewStore) {
   const layoutNodes = new Map<string, any>();
 
   if (layout.children) {
     layout.children.forEach(child => {
       layoutNodes.set(child.id, {
-        x: child.x || 0,
-        y: child.y || 0,
-        width: child.width || 0,
-        height: child.height || 0
+        x: child.x ?? 0,
+        y: child.y ?? 0,
+        width: child.width ?? 0,
+        height: child.height ?? 0
       });
     });
   }
 
-  // Get current view and update positions
-  const view = useViewStore.getState();
-  const newNodes = view.graph.nodes.map(node => {
-    const layoutData = layoutNodes.get(node.id);
+  // Build new nodes array from layout
+  const newNodes = layout.children?.map(layoutChild => {
+    const existingNode = view.graph.nodes.find((n: Node) => n.id === layoutChild.id);
+
     return {
-      ...node,
-      x: layoutData?.x || 0,
-      y: layoutData?.y || 0,
-      width: layoutData?.width || node.width,
-      height: layoutData?.height || node.height
+      id: layoutChild.id,
+      x: layoutChild.x ?? existingNode?.x ?? 0,
+      y: layoutChild.y ?? existingNode?.y ?? 0,
+      width: layoutChild.width ?? existingNode?.width ?? 100,
+      height: layoutChild.height ?? existingNode?.height ?? 60,
+      ports: existingNode?.ports || []
     };
+  }) || [];
+
+  // Add any existing nodes that weren't in the layout (shouldn't happen, but safety check)
+  const existingIds = new Set(newNodes.map((n: Node) => n.id));
+  view.graph.nodes.forEach((existingNode: Node) => {
+    if (!existingIds.has(existingNode.id)) {
+      newNodes.push({
+        ...existingNode,
+        ports: existingNode.ports || []
+      });
+    }
   });
 
-  useViewStore.getState().updateNodes(newNodes);
+  view.updateNodes(newNodes);
 }
 
-const useDiagramStore = create<DiagramStore>((set, get) => ({
-  isReady: false,
-
-  rebuild: async () => {
-    try {
-      // 1. Build diagram from model
-      const diagram = buildDiagram();
-
-      // 2. Convert to ELK format
-      const elkGraph = toElkGraph(diagram);
-
-      // 3. Run layout algorithm
-      const layout = await elk.layout(elkGraph);
-
-      // 4. Apply layout to view
-      applyLayout(layout);
-
-      set({ isReady: true });
-    } catch (error) {
-      console.error('Failed to rebuild diagram:', error);
-      set({ isReady: false });
-    }
-  },
-
-  // Unified undo - tries view first, then model
-  undo: () => {
-    const view = useViewStore.getState();
-    const model = useModelStore.getState();
-    
-    if (view.canUndo()) {
-      view.undo();
-    } else if (model.canUndo()) {
-      model.undo();
-    }
-  },
-
-  // Unified redo - tries view first, then model
-  redo: () => {
-    const view = useViewStore.getState();
-    const model = useModelStore.getState();
-    
-    if (view.canRedo()) {
-      view.redo();
-    } else if (model.canRedo()) {
-      model.redo();
-    }
-  },
-
-  canUndo: () => {
-    const view = useViewStore.getState();
-    const model = useModelStore.getState();
-    return view.canUndo() || model.canUndo();
-  },
-
-  canRedo: () => {
-    const view = useViewStore.getState();
-    const model = useModelStore.getState();
-    return view.canRedo() || model.canRedo();
-  }
-}));
-
-// Auto-rebuild when model changes
-let prevModelSize = useModelStore.getState().elements.size;
-useModelStore.subscribe(() => {
-  const currentSize = useModelStore.getState().elements.size;
-  if (currentSize !== prevModelSize) {
-    prevModelSize = currentSize;
-    useDiagramStore.getState().rebuild();
-  }
-});
-
-// Export individual stores for direct access
-export { useModelStore, useViewStore };
 export default useDiagramStore;

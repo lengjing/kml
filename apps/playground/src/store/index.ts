@@ -17,4 +17,4 @@ export { default as useViewStore } from './ViewStore';
 // Re-export types
 export type { ModelStore, ModelStoreState, ModelStoreActions } from './ModelStore';
 export type { ViewStore, ViewStoreState, ViewStoreActions, Graph } from './ViewStore';
-export type { DiagramStore, DiagramState, DiagramActions } from './DiagramStore';
+export type { HistoryEntry, DiagramActions } from './DiagramStore';
